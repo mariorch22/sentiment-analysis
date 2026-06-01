@@ -34,6 +34,10 @@ class PredictIn(BaseModel):
     text: str
 
 
+class PredictBatchIn(BaseModel):
+    texts: list[str]
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "model": MODEL_NAME}
@@ -47,3 +51,14 @@ def predict(body: PredictIn):
         "label": result["label"].lower(),
         "score": float(result["score"]),
     }
+
+
+@app.post("/predict_batch")
+def predict_batch(body: PredictBatchIn):
+    # Batch-Pfad fuers Offline-Scoring (batch-Container). batch_size buendelt
+    # die Texte fuer den Forward-Pass, truncation kappt lange Reviews.
+    results = clf(body.texts, truncation=True, batch_size=32)
+    return [
+        {"label": r["label"].lower(), "score": float(r["score"])}
+        for r in results
+    ]

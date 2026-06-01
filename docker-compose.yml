@@ -57,15 +57,17 @@ services:
     ports:
       - "8001:8001"
 
-  # --- Dashboard (Streamlit) ---
+  # --- Dashboard (React + Vite, served via nginx) ---
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Browser calls the API at the host-published address, not the docker-compose name
+        VITE_API_URL: ""
     depends_on:
       - api
-    environment:
-      API_URL: http://api:8000
     ports:
-      - "8501:8501"
+      - "5173:80"
 
 volumes:
   minio-data:

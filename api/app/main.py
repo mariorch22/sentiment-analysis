@@ -10,6 +10,7 @@ import os
 import duckdb
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 MINIO_ENDPOINT = os.environ["MINIO_ENDPOINT"]  # z.B. http://minio:9000
@@ -21,6 +22,13 @@ GOLD_SCORED = "s3://gold/reviews_scored.parquet"
 GOLD_DIST = "s3://gold/sentiment_distribution.parquet"
 
 app = FastAPI(title="Sentiment API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 def gold_connection():
@@ -72,6 +80,78 @@ def reviews(sentiment: str | None = None, limit: int = 500):
     finally:
         con.close()
     return df.to_dict(orient="records")
+
+
+@app.get("/products")
+def products(min_reviews: int = 20):
+    """Pro-Produkt-Aggregation fuer den Scatter Chart (Volumen vs. Negativanteil)."""
+    con = gold_connection()
+    try:
+        rows = con.execute(
+            f"""
+            SELECT
+                ProductId                                              AS product_id,
+                COUNT(*)                                               AS n_reviews,
+                SUM(CASE WHEN sentiment = 'negative' THEN 1.0 ELSE 0.0 END)
+                    / COUNT(*)                                         AS neg_rate
+            FROM read_parquet('{GOLD_SCORED}')
+            GROUP BY ProductId
+            HAVING COUNT(*) >= ?
+            ORDER BY n_reviews DESC
+            LIMIT 2000
+            """,
+            [min_reviews],
+        ).fetchall()
+    finally:
+        con.close()
+    return [{"product_id": p, "n_reviews": int(n), "neg_rate": float(r)} for p, n, r in rows]
+
+
+@app.get("/agreement")
+def agreement():
+    """VADER vs. Sternebewertung (1-2 negativ, 3 neutral, 4-5 positiv)."""
+    con = gold_connection()
+    try:
+        matrix = con.execute(
+            f"""
+            SELECT
+                sentiment AS vader,
+                CASE
+                    WHEN CAST(Score AS DOUBLE) <= 2 THEN 'negative'
+                    WHEN CAST(Score AS DOUBLE)  = 3 THEN 'neutral'
+                    ELSE 'positive'
+                END AS star,
+                COUNT(*) AS count
+            FROM read_parquet('{GOLD_SCORED}')
+            GROUP BY sentiment, star
+            """
+        ).fetchall()
+        total, vader_correct = con.execute(
+            f"""
+            SELECT
+                COUNT(*),
+                SUM(CASE WHEN sentiment = star_sent THEN 1 ELSE 0 END)
+            FROM (
+                SELECT
+                    sentiment,
+                    CASE
+                        WHEN CAST(Score AS DOUBLE) <= 2 THEN 'negative'
+                        WHEN CAST(Score AS DOUBLE)  = 3 THEN 'neutral'
+                        ELSE 'positive'
+                    END AS star_sent
+                FROM read_parquet('{GOLD_SCORED}')
+            )
+            """
+        ).fetchone()
+    finally:
+        con.close()
+
+    total = int(total or 0)
+    return {
+        "total": total,
+        "vader_acc": (int(vader_correct) / total) if total else 0.0,
+        "matrix": [{"vader": v, "star": s, "count": int(c)} for v, s, c in matrix],
+    }
 
 
 class PredictIn(BaseModel):

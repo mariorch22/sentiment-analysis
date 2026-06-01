@@ -1,14 +1,12 @@
-FROM python:3.12-slim
-
-# Install uv.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# Copy the application into the container.
-COPY . /app
-
-# Install the application dependencies.
+FROM node:20-slim AS builder
 WORKDIR /app
-RUN uv sync --frozen --no-cache
+COPY package*.json ./
+RUN npm ci --silent
+COPY . .
+ARG VITE_API_URL=http://localhost:8000
+RUN VITE_API_URL=$VITE_API_URL npm run build
 
-# Run the application.
-CMD ["/app/.venv/bin/streamlit", "run", "app/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

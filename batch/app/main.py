@@ -3,11 +3,9 @@ Batch-Processing: bronze -> silver -> gold
 
 Ablauf:
   1. Kaggle-Datensatz nach bronze laden (idempotent)
-  2. bronze lokal herunterladen (fuer Spark)
-  3. Spark: clean + dedup  -> silver
+  2. bronze lokal herunterladen
+  3. Spark: clean + dedup -> silver
   4. Spark + VADER: sentiment + aggregate -> gold
-
-Spark laeuft im local mode, MinIO-Transfer ueber boto3.
 """
 
 import io
@@ -150,8 +148,10 @@ def main():
 
     print("Baue gold (VADER) ...")
     scored, distribution = build_gold(silver)
-    upload_parquet(s3, scored.toPandas(), GOLD, "reviews_scored.parquet")
+    scored_pdf = scored.toPandas()
+
     upload_parquet(s3, distribution.toPandas(), GOLD, "sentiment_distribution.parquet")
+    upload_parquet(s3, scored_pdf, GOLD, "reviews_scored.parquet")
 
     spark.stop()
     print("Batch fertig.")

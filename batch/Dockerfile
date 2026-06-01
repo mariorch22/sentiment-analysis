@@ -17,4 +17,5 @@ COPY . /app
 WORKDIR /app
 RUN uv sync --frozen --no-cache
 
+ENV PYTHONUNBUFFERED=1
 CMD ["uv", "run", "python", "app/main.py"]
