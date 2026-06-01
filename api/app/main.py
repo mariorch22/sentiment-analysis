@@ -18,8 +18,9 @@ MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
 MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 INFERENCE_URL = os.environ.get("INFERENCE_URL", "http://inference:8001")
 
-GOLD_SCORED = "s3://gold/reviews_scored.parquet"
-GOLD_DIST = "s3://gold/sentiment_distribution.parquet"
+# Spark schreibt mehrteilige Parquet-Verzeichnisse -> per Glob lesen
+GOLD_SCORED = "s3://gold/reviews_scored/*.parquet"
+GOLD_DIST = "s3://gold/sentiment_distribution/*.parquet"
 
 app = FastAPI(title="Sentiment API")
 
